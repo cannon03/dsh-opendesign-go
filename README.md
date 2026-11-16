@@ -42,15 +42,37 @@ installed plugin loads on the next start.
 
 The **desktop** profile is owned by the Electron app and the CLI refuses it
 (`error: profile "desktop" is managed exclusively by the Electron application`).
-Install into it the way the app itself does — from the profile directory:
 
-```bash
-cd ~/.dsh/profiles/desktop
-pnpm add "dsh-opendesign-go@link:/path/to/dsh-opendesign-go"
+> **Desktop app: this plugin's card has no fields.** That app's Models page
+> renders an editor only for its two built-in provider families — `layoutOf()`
+> returns `"unknown"` for any other settings namespace, and that branch draws an
+> explanatory paragraph and no inputs, with Save disabled:
+> `dsh-client-ui-settings-models/lib/client.js` (`layoutOf`, and
+> `submitDisabled: … || layout === "unknown" || …`). A third-party adapter can
+> register its route and resolve models, but the GUI cannot carry its key.
+>
+> For the desktop app, put OpenDesign Go on the **pi-ai** route family instead
+> (the same family that carried the old OpenCode Go routes) — its card renders
+> the API-key field, protocol, base URL, model catalogue, and a *Fetch models*
+> button that pulls the live `/v1/models` list:
+
+```yaml
+# ~/.dsh/profiles/desktop/cordis.patch.yml
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      opendesign-go:
+        displayName: OpenDesign Go
+        api: openai-completions
+        baseURL: https://amr-link.open-design.ai/v1
+        apiKeyEnv: OPENDESIGN_GO_API_KEY
+        # seed `models:` from lib/models.js, or leave it out and press
+        # "Fetch models" on the card to import the live /v1/models list
 ```
 
-then add `dsh-opendesign-go` to `dsh.profile.bundles` in that profile's
-`package.json` and restart the app.
+Use this plugin where there is no Models page — `headless`, `web`, `tui` — with
+`OPENDESIGN_GO_API_KEY` in the environment or in the credential store.
 
 ## Add the key
 
