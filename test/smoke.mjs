@@ -14,6 +14,7 @@ import http from 'node:http';
 import { OpenDesignCatalog } from '../lib/catalog.js';
 import { Config, apply, name as PLUGIN_NAME } from '../lib/index.js';
 import { WireTranslator, mapFinishReason, serializeRequest } from '../lib/wire.js';
+import { OpenDesignGoAdapter } from '../lib/adapter.js';
 
 const results = [];
 let failures = 0;
@@ -256,7 +257,7 @@ await check('OpenDesignCatalog discovers models from the price sheet', async () 
       log: () => {},
     });
     const sheet = await catalog.get();
-    assert.equal(sheet.models.length, 3, 'every priced model must be offered');
+    assert.equal(sheet.models.length, 16, 'the three priced models plus the thirteen others the plan serves');
     const astra = sheet.models.find((model) => model.id === 'gpt-6-astra');
     assert.ok(astra, 'gpt-6-astra must be present');
     assert.equal(astra.name, 'GPT-6 Astra');
@@ -277,6 +278,56 @@ await check('OpenDesignCatalog falls back to curated ids when unreachable', asyn
   const sheet = await catalog.get();
   assert.ok(sheet.models.length >= 44, 'the curated catalogue must cover the subscription');
   assert.ok(sheet.models.some((model) => model.id === 'kimi-k3.1-pro'));
+});
+
+await check('catalogue rows carry the entitled capabilities', async () => {
+  const server = await scriptedServer([(req, res) => sse(res, [])]);
+  try {
+    const catalog = new OpenDesignCatalog({
+      setting: (key) => settingsFor(server.baseURL, server.pricesURL)[key],
+      apiKey: async () => undefined,
+      log: () => {},
+    });
+    const sheet = await catalog.get();
+    const eco = sheet.models.find((model) => model.id === 'deepseek-v4.1-flash-eco');
+    assert.ok(eco, 'an entitled model must be present even when the price sheet omits it');
+    assert.equal(eco.contextWindow, 328_000);
+    assert.equal(eco.maxTokens, 128_000);
+    assert.deepEqual(eco.inputModalities, ['text']);
+    assert.deepEqual(eco.reasoningEfforts, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+    const haiku = sheet.models.find((model) => model.id === 'claude-haiku-5.5');
+    assert.deepEqual(haiku.inputModalities, ['text', 'image']);
+    assert.deepEqual(sheet.models.find((model) => model.id === 'glm-5.3-flashx').reasoningEfforts, ['minimal', 'low', 'high', 'xhigh', 'max']);
+    assert.deepEqual(sheet.models.find((model) => model.id === 'kimi-k2.7-code').reasoningEfforts, ['minimal', 'low', 'medium', 'high', 'xhigh']);
+  } finally {
+    await server.close();
+  }
+});
+
+await check('resolveModel advertises the verified reasoning levels', async () => {
+  const server = await scriptedServer([(req, res) => sse(res, [])]);
+  const adapter = new OpenDesignGoAdapter({
+    setting: (key) => settingsFor(server.baseURL, server.pricesURL)[key],
+    models: () => new OpenDesignCatalog({
+      setting: (key) => settingsFor(server.baseURL, server.pricesURL)[key],
+      apiKey: async () => undefined,
+      log: () => {},
+    }).get().then((sheet) => sheet.models),
+    apiKey: async () => 'sk-test',
+    settings: () => settingsFor(server.baseURL, server.pricesURL),
+    log: () => {},
+  });
+  const info = await adapter.resolveModel('opendesign-go', 'deepseek-v4.1-flash');
+  assert.deepEqual(info.reasoning.efforts.map((effort) => effort.id), ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(info.reasoning.efforts[0].name, 'Minimal');
+  assert.deepEqual(info.inputModalities, ['text', 'image']);
+  assert.equal(info.context.contextWindow, 328_000);
+  assert.equal(info.defaultMaxTokens, 128_000);
+  const filtered = await adapter.resolveModel('opendesign-go', 'glm-5.3-flashx');
+  assert.deepEqual(filtered.reasoning.efforts.map((effort) => effort.id), ['minimal', 'low', 'high', 'xhigh', 'max']);
+  const unknown = await adapter.resolveModel('opendesign-go', 'not-in-the-catalogue');
+  assert.equal(unknown.reasoning, undefined, 'an unknown model must not claim reasoning');
+  await server.close();
 });
 
 await check('OpenDesignCatalog merges extraModels', async () => {
@@ -307,7 +358,7 @@ await check('adapter streams a completion end to end', async () => {
 
     const adapter = calls.adapter;
     const models = await adapter.listModels('opendesign-go');
-    assert.equal(models.length, 3);
+    assert.equal(models.length, 16);
     assert.deepEqual(models[0].inputModalities, ['text']);
 
     const chunks = await drain(

@@ -29,6 +29,22 @@ The union becomes the model list, cached for `catalogMinutes`. When every
 network read fails, the plugin falls back to a curated catalogue of the models
 known at build time, so the picker is never empty.
 
+## Reasoning effort
+
+Every model advertises the `reasoning_effort` levels the gateway accepted for
+it. They were measured, not guessed: each entitled model was probed with
+minimal/low/medium/high/xhigh/max and the ones that answered 200 were kept.
+Six levels hold for most models; `glm-5.3-flashx` rejects `medium` and
+`kimi-k2.7-code` rejects `max`, and those two simply offer five. The levels do
+change behaviour — on the same prompt `deepseek-v4.1-flash` spent 425
+reasoning tokens at `minimal` and 1321 at `max`.
+
+`lib/models.js` holds that table (`CAPABILITIES`), and it is also where the
+per-model context window and output cap come from: the endpoint's
+`context_budget` (the usable window) and `output_budget`, instead of the
+per-family guess below. A model the table does not know still appears from
+discovery, with the family window and no effort levels.
+
 ## Install
 
 ```bash
@@ -113,9 +129,10 @@ the harness runs. There is deliberately **no `models` field**: the Models page
 validates that path against the DeepSeek catalogue shape on every save.
 
 Wire ids use dots (`claude-opus-5.5`, `glm-5.3-flashx`), unlike the marketing
-slugs on `go.open-design.ai/models/<slug>/`. The provider does not publish
-context windows, so the plugin applies a per-family table (Gemini 1M, GPT-6
-400k, Claude 200k, …) and lets `contextWindows` override any entry.
+slugs on `go.open-design.ai/models/<slug>/`. Models in the capability table use
+the endpoint's own budget numbers; anything else falls back to a per-family
+table (Gemini 1M, GPT-6 400k, Claude 200k, …), and `contextWindows` overrides
+either.
 
 ## Failures
 
@@ -139,7 +156,7 @@ it rather than failing a call the provider would otherwise serve.
 ## Development
 
 ```bash
-npm test              # 18 checks: schema, wire, SSE, adapter, live catalogue
+npm test              # 20 checks: schema, wire, SSE, adapter, capabilities, live catalogue
 SKIP_NETWORK=1 npm test   # offline
 ```
 
@@ -159,5 +176,5 @@ lib/adapter.js  LlmAdapter subclass: stream, model resolution, failure mapping
 lib/catalog.js  price sheet + /models discovery, cache, curated fallback
 lib/wire.js     harness ⇄ OpenAI request/stream translation
 lib/sse.js      dependency-free SSE reader
-lib/models.js   display names, context-window families, curated ids
+lib/models.js   display names, served-model capabilities, context-window families
 ```
