@@ -32,13 +32,25 @@ known at build time, so the picker is never empty.
 ## Install
 
 ```bash
-dsh plugin --profile desktop add /path/to/dsh-opendesign-go
+dsh plugin --profile web add /path/to/dsh-opendesign-go
 ```
 
 The package declares `dsh.bundle.patch`, so the installer appends it to your
 profile's `dsh.profile.bundles` and its `cordis.patch.yml` adds the provider
 entry. Restart the app afterwards: this profile has no HMR, so a newly
 installed plugin loads on the next start.
+
+The **desktop** profile is owned by the Electron app and the CLI refuses it
+(`error: profile "desktop" is managed exclusively by the Electron application`).
+Install into it the way the app itself does — from the profile directory:
+
+```bash
+cd ~/.dsh/profiles/desktop
+pnpm add "dsh-opendesign-go@link:/path/to/dsh-opendesign-go"
+```
+
+then add `dsh-opendesign-go` to `dsh.profile.bundles` in that profile's
+`package.json` and restart the app.
 
 ## Add the key
 
