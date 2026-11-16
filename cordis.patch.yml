@@ -1,0 +1,7 @@
+# dsh-opendesign-go profile layer: mount the OpenDesign Go provider.
+#
+# The entry id doubles as the settings namespace, which is what the
+# Settings → Models card writes to (see lib/index.js).
+- insert:
+    - id: dsh-opendesign-go
+      name: dsh-opendesign-go
